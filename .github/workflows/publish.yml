@@ -1,0 +1,80 @@
+name: publish
+
+# Publishes `langchain-bowmark` to PyPI whenever the monorepo mirror-sync lands a
+# new version in pyproject.toml.
+#
+# This file lives at packages/langchain-bowmark/.github/workflows/publish.yml in
+# the monorepo (inert there — GitHub only runs repo-root workflows) and rides
+# release-langchain-bowmark.yml's mirror sync into
+# github.com/bowmark-ai/langchain-bowmark, where it becomes a real workflow and
+# fires on the sync's push to main. Same shape as packages/bowmark-mcp's.
+#
+# Publishing runs HERE, not in the monorepo, because PyPI Trusted Publishing
+# (OIDC) and provenance both need a PUBLIC source repo.
+#
+# Versioning is manual and lives upstream: bumping pyproject.toml in the
+# monorepo IS the release action. The job diffs the local version against the
+# LIVE registry, so a sync without a bump (or a re-run) is a green no-op.
+#
+# Auth: OIDC Trusted Publishing — pypi.org → Publishing → GitHub → owner
+# bowmark-ai, repo langchain-bowmark, workflow publish.yml, no environment.
+# No token secrets. GitHub-hosted on purpose: the mirror has no self-hosted
+# runners.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  pypi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Decide whether to publish
+        id: decide
+        run: |
+          set -euo pipefail
+          LOCAL=$(grep -m1 '^version' pyproject.toml | sed 's/.*"\(.*\)"/\1/')
+          LIVE=$(curl -s https://pypi.org/pypi/langchain-bowmark/json | python3 -c 'import json,sys; print(json.load(sys.stdin)["info"]["version"])' 2>/dev/null || echo "none")
+          echo "local=$LOCAL live=$LIVE"
+          if [ "$LOCAL" = "$LIVE" ]; then
+            echo "Version $LOCAL already on PyPI — nothing to publish."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install uv
+        if: steps.decide.outputs.publish == 'true'
+        run: |
+          set -euo pipefail
+          command -v uv >/dev/null || curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # The unit tests are hermetic (mocked transport + LangChain's standard
+      # tool tests). They gate the publish because nothing else runs them: the
+      # monorepo's CI is TypeScript-only.
+      - name: Unit tests
+        if: steps.decide.outputs.publish == 'true'
+        run: |
+          set -euo pipefail
+          uv venv
+          uv pip install -e . --group test
+          uv run --no-sync pytest tests/unit_tests -q
+
+      - name: Build and publish to PyPI
+        if: steps.decide.outputs.publish == 'true'
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          uv build
+          # No token: uv exchanges the job's GitHub OIDC token with PyPI.
+          uv publish

@@ -1,0 +1,34 @@
+[project]
+name = "langchain-bowmark"
+version = "0.1.0"
+description = "LangChain tools for Bowmark: typed functions an agent calls to search, price-check and book on live websites."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Bowmark AI", email = "christopher@bowmark.ai" }]
+keywords = ["langchain", "bowmark", "agents", "tools", "web", "mcp"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent",
+  "Typing :: Typed",
+]
+dependencies = ["langchain-core>=1.0,<2", "httpx>=0.27,<1"]
+
+[project.urls]
+Homepage = "https://bowmark.ai"
+Documentation = "https://bowmark.ai/docs/langchain"
+Repository = "https://github.com/bowmark-ai/langchain-bowmark"
+
+[dependency-groups]
+test = ["pytest>=8", "pytest-asyncio>=0.23", "langchain-tests>=1.0,<2"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["langchain_bowmark"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = ["live: calls the real Bowmark API (needs BOWMARK_API_KEY)"]
